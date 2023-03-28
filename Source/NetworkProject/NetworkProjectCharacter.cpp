@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "NetworkProjectCharacter.h"
+#include "BulletActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -120,6 +121,7 @@ void ANetworkProjectCharacter::SetupPlayerInputComponent(class UInputComponent* 
 		//Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ANetworkProjectCharacter::Look);
 
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANetworkProjectCharacter::Fire);
 	}
 
 }
@@ -158,6 +160,61 @@ void ANetworkProjectCharacter::Look(const FInputActionValue& Value)
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
+}
+
+void ANetworkProjectCharacter::SpawnBullet()
+{
+	FVector loc = GetActorLocation() + GetActorForwardVector() * 100.0f;
+	bullet = GetWorld()->SpawnActor<ABulletActor>(bulletFactory, loc, GetActorRotation());
+}
+
+// 해킹 방지, 다 만들고 추가하는게 좋다, 서버 함수에만 가능
+bool ANetworkProjectCharacter::ServerFire_Validate(int32 damage)
+{
+	//return damage <= 1000;
+	return true;
+}
+
+void ANetworkProjectCharacter::Fire()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Query Fire"));
+	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Query Fire"), true, FVector2D(1.2f));
+
+	// 지연시간이 있어서 평소 알던 함수 실행 순서랑 다르다
+	ServerFire(100);
+}
+
+// 서버에 요청하는 함수
+void ANetworkProjectCharacter::ServerFire_Implementation(int32 damage)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Server Fire"));
+	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Server Fire"), true, FVector2D(1.2f));
+
+	// 서버에서 구현
+	SpawnBullet();
+
+	bullet->SetOwner(this);
+
+	// 오너 해제
+	//bullet->SetOwner(nullptr);
+
+	//MulticastFire();
+	//ClientFire();
+}
+
+// 서버로 부터 전달되는 함수
+void ANetworkProjectCharacter::MulticastFire_Implementation(int32 damage)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Multicast Fire"));
+	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Multicast Fire"), true, FVector2D(1.2f));
+}
+
+void ANetworkProjectCharacter::ClientFire_Implementation(int32 damage)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Client Fire"));
+	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Client Fire"), true, FVector2D(1.2f));
+
+	//SpawnBullet();
 }
 
 void ANetworkProjectCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
