@@ -169,7 +169,7 @@ void ANetworkProjectCharacter::SpawnBullet()
 }
 
 // 해킹 방지, 다 만들고 추가하는게 좋다, 서버 함수에만 가능
-bool ANetworkProjectCharacter::ServerFire_Validate(int32 damage)
+bool ANetworkProjectCharacter::ServerFire_Validate()
 {
 	//return damage <= 1000;
 	return true;
@@ -181,11 +181,11 @@ void ANetworkProjectCharacter::Fire()
 	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Query Fire"), true, FVector2D(1.2f));
 
 	// 지연시간이 있어서 평소 알던 함수 실행 순서랑 다르다
-	ServerFire(100);
+	ServerFire();
 }
 
 // 서버에 요청하는 함수
-void ANetworkProjectCharacter::ServerFire_Implementation(int32 damage)
+void ANetworkProjectCharacter::ServerFire_Implementation()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Server Fire"));
 	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Server Fire"), true, FVector2D(1.2f));
@@ -198,15 +198,20 @@ void ANetworkProjectCharacter::ServerFire_Implementation(int32 damage)
 	// 오너 해제
 	//bullet->SetOwner(nullptr);
 
-	//MulticastFire();
+	MulticastFire();
 	//ClientFire();
 }
 
 // 서버로 부터 전달되는 함수
-void ANetworkProjectCharacter::MulticastFire_Implementation(int32 damage)
+void ANetworkProjectCharacter::MulticastFire_Implementation()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Multicast Fire"));
 	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Multicast Fire"), true, FVector2D(1.2f));
+
+	if(FireMontage != nullptr)
+	{
+		PlayAnimMontage(FireMontage);
+	}
 }
 
 void ANetworkProjectCharacter::ClientFire_Implementation(int32 damage)

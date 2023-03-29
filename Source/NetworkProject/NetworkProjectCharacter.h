@@ -71,16 +71,19 @@ public:
 
 	// µø±‚»≠
 	UFUNCTION(Server, Unreliable, WithValidation)
-	void ServerFire(int32 damage);
+	void ServerFire();
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastFire(int32 damage);
+	void MulticastFire();
 
 	UFUNCTION(Client, Unreliable)
 	void ClientFire(int32 damage);
 	
 	UPROPERTY(EditDefaultsOnly, Category = "my settings")
 	TSubclassOf<class ABulletActor> bulletFactory;
+
+	UPROPERTY(EditDefaultsOnly, Category = "my settings")
+	class UAnimMontage* FireMontage;
 
 	void SpawnBullet();
 

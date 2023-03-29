@@ -4,7 +4,6 @@
 #include "BulletActor.h"
 #include "Components/SphereComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Particles/ParticleSystem.h"
 
 // Sets default values
 ABulletActor::ABulletActor()
@@ -42,11 +41,16 @@ void ABulletActor::Tick(float DeltaTime)
 
 void ABulletActor::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+	auto owningPawn = Cast<APawn>(GetOwner());
+
+	if(owningPawn->GetController() != nullptr && owningPawn->GetController()->IsLocalController())
+	{
+		// 플레이어 컨트롤러에 소유되지 않기 때문에 오우너 설정을 해준다
+		SpawnEmitter();
+	}
+
 	// 부딪히면 불꽃 이펙트를 출력한 다음 제거한다
 	//UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), fireEffect, GetActorLocation());
-
-	// 플레이어 컨트롤러에 소유되지 않기 때문에 오우너 설정을 해준다
-	SpawnEmitter();
 
 	//Destroy();
 }
