@@ -31,6 +31,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim Setting")
 	float aimPitch;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim Setting")
+	bool bIsDead = false;
+
 private:
 	class ANetworkProjectCharacter* player;
 };

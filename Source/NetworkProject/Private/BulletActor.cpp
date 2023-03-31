@@ -2,8 +2,10 @@
 
 
 #include "BulletActor.h"
+#include "PlayerInfoWidget.h"
 #include "Components/SphereComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "NetworkProject/NetworkProjectCharacter.h"
 
 // Sets default values
 ABulletActor::ABulletActor()
@@ -49,6 +51,16 @@ void ABulletActor::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* O
 		SpawnEmitter();
 	}
 
+	if(HasAuthority())
+	{
+		auto player = Cast<ANetworkProjectCharacter>(OtherActor);
+
+		if(player != nullptr)
+		{
+			player->ServerDamageProcess(-10);
+		}
+	}
+	
 	// 부딪히면 불꽃 이펙트를 출력한 다음 제거한다
 	//UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), fireEffect, GetActorLocation());
 

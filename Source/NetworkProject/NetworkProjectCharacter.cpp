@@ -11,6 +11,9 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "DrawDebugHelpers.h"
+#include "PlayerAnimInstance.h"
+#include "PlayerInfoWidget.h"
+#include "Components/WidgetComponent.h"
 #include "Net/UnrealNetwork.h"
 
 
@@ -54,6 +57,10 @@ ANetworkProjectCharacter::ANetworkProjectCharacter()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+
+	// 위젯 컴포넌트 생성
+	playerInfoUI = CreateDefaultSubobject<UWidgetComponent>(TEXT("playerInfoUI"));
+	playerInfoUI->SetupAttachment(GetMesh());
 }
 
 void ANetworkProjectCharacter::BeginPlay()
@@ -69,11 +76,26 @@ void ANetworkProjectCharacter::BeginPlay()
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		}
 	}
+
+	if(HasAuthority())
+	{
+		SetHealth(maxHP);
+	}
+
+	infoWidget = Cast<UPlayerInfoWidget>(playerInfoUI->GetWidget());
+
+	anim = Cast<UPlayerAnimInstance>(GetMesh()->GetAnimInstance());
+
 }
 
 void ANetworkProjectCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	if(bIsDead)
+	{
+		return;
+	}
 
 	// 상태 정보를 출력한다
 	DrawDebugString(GetWorld(), GetActorLocation(), PrintInfo(), nullptr, FColor::White, 0.0f, true, 1.0f);
@@ -84,17 +106,33 @@ void ANetworkProjectCharacter::Tick(float DeltaSeconds)
 
 		repNumber++;
 	}
+	
+	infoWidget->SetHealth(curHP);
+
+	if(curHP <= 0)
+	{
+		bIsDead = true;
+
+		GetCharacterMovement()->DisableMovement();
+
+		GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		bUseControllerRotationYaw = false;
+		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0, 0, 0, 1);
+	}
 }
 
 FString ANetworkProjectCharacter::PrintInfo()
 {
+	// 로그끄기 대용 변수
+	FString infoText;
 #pragma region RoleInfo
-	FString myLocalRole = UEnum::GetValueAsString<ENetRole>(GetLocalRole());
-	FString myRemoteRole = UEnum::GetValueAsString<ENetRole>(GetRemoteRole());
-	FString myConnection = GetNetConnection() != nullptr ? TEXT("Valid") : TEXT("inValid");
-	FString myOwner = GetOwner() != nullptr ? GetOwner()->GetName() : TEXT("No Owner");
-	FString name = this->GetName();
-	FString infoText = FString::Printf(TEXT("Local Role : %s\nRemote Role : %s\nNet Connection : %s\nOwener : %s\nName : %s"), *myLocalRole, *myRemoteRole, *myConnection, *myOwner, *name);
+	//FString myLocalRole = UEnum::GetValueAsString<ENetRole>(GetLocalRole());
+	//FString myRemoteRole = UEnum::GetValueAsString<ENetRole>(GetRemoteRole());
+	//FString myConnection = GetNetConnection() != nullptr ? TEXT("Valid") : TEXT("inValid");
+	//FString myOwner = GetOwner() != nullptr ? GetOwner()->GetName() : TEXT("No Owner");
+	//FString name = this->GetName();
+	//FString infoText = FString::Printf(TEXT("Local Role : %s\nRemote Role : %s\nNet Connection : %s\nOwener : %s\nName : %s"), *myLocalRole, *myRemoteRole, *myConnection, *myOwner, *name);
 #pragma endregion
 
 #pragma region RepOrNot
@@ -159,6 +197,45 @@ void ANetworkProjectCharacter::Look(const FInputActionValue& Value)
 		// add yaw and pitch input to controller
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
+	}
+}
+
+void ANetworkProjectCharacter::SetHealth(int32 value)
+{
+	curHP = FMath::Min(maxHP, value);
+}
+
+void ANetworkProjectCharacter::AddHealth(int32 value)
+{
+	curHP = FMath::Clamp(curHP + value, 0, maxHP);
+}
+
+
+void ANetworkProjectCharacter::ServerDamageProcess_Implementation(int32 value)
+{
+	AddHealth(value);
+
+	MulticastDamageProcess();
+
+}
+
+void ANetworkProjectCharacter::MulticastDamageProcess_Implementation()
+{
+	if (curHP > 0)
+	{
+		if (HitMontage != nullptr)
+		{
+			PlayAnimMontage(HitMontage);
+		}
+	}
+	else
+	{
+		// 죽음 변수 변경
+
+		if (anim != nullptr)
+		{
+			anim->bIsDead = true;
+		}
 	}
 }
 
@@ -227,6 +304,11 @@ void ANetworkProjectCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	//DOREPLIFETIME(ANetworkProjectCharacter, repNumber);
-	DOREPLIFETIME_CONDITION(ANetworkProjectCharacter, repNumber, COND_OwnerOnly);
+	//DOREPLIFETIME_CONDITION(ANetworkProjectCharacter, repNumber, COND_OwnerOnly);
+
+	DOREPLIFETIME(ANetworkProjectCharacter, curHP);
+	DOREPLIFETIME(ANetworkProjectCharacter, ammo);
+	DOREPLIFETIME(ANetworkProjectCharacter, myName);
+	DOREPLIFETIME(ANetworkProjectCharacter, bIsDead);
 	
 }
