@@ -13,6 +13,9 @@
 #include "DrawDebugHelpers.h"
 #include "PlayerAnimInstance.h"
 #include "PlayerInfoWidget.h"
+#include "ServerGameInstance.h"
+#include "WeaponActor.h"
+#include "Components/TextBlock.h"
 #include "Components/WidgetComponent.h"
 #include "Net/UnrealNetwork.h"
 
@@ -86,11 +89,26 @@ void ANetworkProjectCharacter::BeginPlay()
 
 	anim = Cast<UPlayerAnimInstance>(GetMesh()->GetAnimInstance());
 
+	gameInstance = Cast<UServerGameInstance>(GetGameInstance());
+
+	if(GetController() != nullptr && GetController()->IsLocalController())
+	{
+		SetServerName(gameInstance->sessionID.ToString());
+	}
+
+	//FTimerHandle nameHandle;
+	/*GetWorldTimerManager().SetTimer(nameHandle, FTimerDelegate::CreateLambda(
+		[&]()
+		{
+			infoWidget->text_Name->SetText(FText::FromString(myName));
+		}), 0.5f, false);*/
 }
 
 void ANetworkProjectCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	infoWidget->text_Name->SetText(FText::FromString(myName));
 
 	if(bIsDead)
 	{
@@ -113,12 +131,16 @@ void ANetworkProjectCharacter::Tick(float DeltaSeconds)
 	{
 		bIsDead = true;
 
-		GetCharacterMovement()->DisableMovement();
+		// 조작을 하는 클라이언트에서만 실행한다
+		if(GetController() != nullptr)
+		{
+			GetCharacterMovement()->DisableMovement();
 
-		GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		bUseControllerRotationYaw = false;
-		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0, 0, 0, 1);
+			GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			bUseControllerRotationYaw = false;
+			FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0, 0, 0, 1);
+		}
 	}
 }
 
@@ -160,6 +182,7 @@ void ANetworkProjectCharacter::SetupPlayerInputComponent(class UInputComponent* 
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ANetworkProjectCharacter::Look);
 
 		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANetworkProjectCharacter::Fire);
+		EnhancedInputComponent->BindAction(ReleaseAction, ETriggerEvent::Started, this, &ANetworkProjectCharacter::ReleaseWeapon);
 	}
 
 }
@@ -210,6 +233,10 @@ void ANetworkProjectCharacter::AddHealth(int32 value)
 	curHP = FMath::Clamp(curHP + value, 0, maxHP);
 }
 
+void ANetworkProjectCharacter::SetServerName_Implementation(const FString& name)
+{
+	myName = name;
+}
 
 void ANetworkProjectCharacter::ServerDamageProcess_Implementation(int32 value)
 {
@@ -242,7 +269,7 @@ void ANetworkProjectCharacter::MulticastDamageProcess_Implementation()
 void ANetworkProjectCharacter::SpawnBullet()
 {
 	FVector loc = GetActorLocation() + GetActorForwardVector() * 100.0f;
-	bullet = GetWorld()->SpawnActor<ABulletActor>(bulletFactory, loc, GetActorRotation());
+	bullet = GetWorld()->SpawnActor<ABulletActor>(bulletFactory, owningWeapon->meshComp->GetSocketLocation(FName("AmmoSocket")), owningWeapon->meshComp->GetSocketRotation(FName("AmmoSocket")));
 }
 
 // 해킹 방지, 다 만들고 추가하는게 좋다, 서버 함수에만 가능
@@ -252,42 +279,75 @@ bool ANetworkProjectCharacter::ServerFire_Validate()
 	return true;
 }
 
+// 총 발사
 void ANetworkProjectCharacter::Fire()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Query Fire"));
-	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Query Fire"), true, FVector2D(1.2f));
+	if(owningWeapon != nullptr && !bFireDelay)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Query Fire"));
+		GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Query Fire"), true, FVector2D(1.2f));
 
-	// 지연시간이 있어서 평소 알던 함수 실행 순서랑 다르다
-	ServerFire();
+		// 지연시간이 있어서 평소 알던 함수 실행 순서랑 다르다
+		ServerFire();
+	}
 }
 
 // 서버에 요청하는 함수
 void ANetworkProjectCharacter::ServerFire_Implementation()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Server Fire"));
-	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Server Fire"), true, FVector2D(1.2f));
+	if(ammo > 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Server Fire"));
+		GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Server Fire"), true, FVector2D(1.2f));
 
-	// 서버에서 구현
-	SpawnBullet();
+		// 서버에서 구현
+		SpawnBullet();
 
-	bullet->SetOwner(this);
+		bullet->SetOwner(this);
+		bullet->attackPower = owningWeapon->damagePower;
+		ammo--;
+		owningWeapon->ammo--;
 
-	// 오너 해제
-	//bullet->SetOwner(nullptr);
+		bFireDelay = true;
 
-	MulticastFire();
-	//ClientFire();
+		FTimerHandle fireDelayhandle;
+
+		GetWorld()->GetTimerManager().SetTimer(fireDelayhandle, FTimerDelegate::CreateLambda(
+		[&]()
+		{
+			bFireDelay = false;
+		}), owningWeapon->reloadTime, false);
+
+		// 오너 해제
+		//bullet->SetOwner(nullptr);
+
+		MulticastFire(true);
+		//ClientFire();
+	}
+	else
+	{
+		MulticastFire(false);
+	}
 }
 
 // 서버로 부터 전달되는 함수
-void ANetworkProjectCharacter::MulticastFire_Implementation()
+void ANetworkProjectCharacter::MulticastFire_Implementation(bool bHasAmmo)
 {
 	UE_LOG(LogTemp, Warning, TEXT("Multicast Fire"));
 	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Multicast Fire"), true, FVector2D(1.2f));
-
-	if(FireMontage != nullptr)
+	if(bHasAmmo)
 	{
-		PlayAnimMontage(FireMontage);
+		if(FireMontage != nullptr)
+		{
+			PlayAnimMontage(FireMontage);
+		}
+	}
+	else
+	{
+		if(NoAmmoMontage != nullptr)
+		{
+			PlayAnimMontage(NoAmmoMontage);
+		}
 	}
 }
 
@@ -297,6 +357,15 @@ void ANetworkProjectCharacter::ClientFire_Implementation(int32 damage)
 	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString("Client Fire"), true, FVector2D(1.2f));
 
 	//SpawnBullet();
+}
+
+// 총 내려놓기
+void ANetworkProjectCharacter::ReleaseWeapon()
+{
+	if(GetController() != nullptr && GetController()->IsLocalController() && owningWeapon != nullptr)
+	{
+		owningWeapon->ServerReleaseWeapon(this);
+	}
 }
 
 void ANetworkProjectCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -309,6 +378,5 @@ void ANetworkProjectCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 	DOREPLIFETIME(ANetworkProjectCharacter, curHP);
 	DOREPLIFETIME(ANetworkProjectCharacter, ammo);
 	DOREPLIFETIME(ANetworkProjectCharacter, myName);
-	DOREPLIFETIME(ANetworkProjectCharacter, bIsDead);
-	
+	DOREPLIFETIME(ANetworkProjectCharacter, bFireDelay);
 }

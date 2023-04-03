@@ -44,6 +44,9 @@ class ANetworkProjectCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputAction* FireAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* ReleaseAction;
+
 public:
 	ANetworkProjectCharacter();
 	
@@ -57,6 +60,8 @@ protected:
 	void Look(const FInputActionValue& Value);
 			
 	void Fire();
+
+	void ReleaseWeapon();
 
 protected:
 	// APawn interface
@@ -83,6 +88,9 @@ public:
 	class UAnimMontage* HitMontage;
 
 	UPROPERTY(EditDefaultsOnly, Category = "my settings")
+	class UAnimMontage* NoAmmoMontage;
+
+	UPROPERTY(EditDefaultsOnly, Category = "my settings")
 	int32 maxHP = 100;
 
 	UPROPERTY(EditDefaultsOnly, Replicated, Category = "my settings")
@@ -94,12 +102,15 @@ public:
 	UPROPERTY(VisibleDefaultsOnly, Category = "my settings")
 	class UPlayerInfoWidget* infoWidget;
 
+	UPROPERTY()
+	class AWeaponActor* owningWeapon;
+
 	// µø±‚»≠
 	UFUNCTION(Server, Unreliable, WithValidation)
 	void ServerFire();
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastFire();
+	void MulticastFire(bool bHasAmmo);
 
 	UFUNCTION(Client, Unreliable)
 	void ClientFire(int32 damage);
@@ -115,6 +126,9 @@ public:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastDamageProcess();
+
+	UFUNCTION(Server, Unreliable)
+	void SetServerName(const FString& name);
 
 	FORCEINLINE int32 GetHealth() { return curHP; };
 
@@ -140,6 +154,10 @@ private:
 	FString myName;
 
 	UPROPERTY(Replicated)
-	bool bIsDead;
-};
+	bool bFireDelay;
 
+	UPROPERTY()
+	bool bIsDead;
+
+	class UServerGameInstance* gameInstance;
+};

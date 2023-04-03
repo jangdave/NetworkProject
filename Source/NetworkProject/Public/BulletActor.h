@@ -37,11 +37,10 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "bullet setting")
 	class UParticleSystem* fireEffect;
+	
+	UPROPERTY(EditAnywhere)
+	int32 attackPower;
 
-	UFUNCTION(Server, Unreliable)
-	void SpawnEmitter();
-
-	UFUNCTION(NetMulticast, Unreliable)
-	void SpawnMultiEmitter();
+	virtual void Destroyed();
 	
 };

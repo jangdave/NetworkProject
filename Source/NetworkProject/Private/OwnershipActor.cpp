@@ -43,12 +43,16 @@ void AOwnershipActor::BeginPlay()
 
 		// 5초에 한번씩 textNumber의 변수를 변경한다
 		FTimerHandle repeatTimer;
-		GetWorld()->GetTimerManager().SetTimer(repeatTimer, FTimerDelegate::CreateLambda([&]() {testNumber = FMath::Rand(); }), 5.0f, true);
+		GetWorld()->GetTimerManager().SetTimer(repeatTimer, FTimerDelegate::CreateLambda(
+			[&]()
+			{
+				testNumber = FMath::Rand();
+			}), 5.0f, true);
 	}
 
 	// 매시의 재질을 다이나믹 메테리얼 인스턴스로 변경한다
 	UMaterialInterface* base_mat = meshComp->GetMaterial(0);
-
+	
 	if(base_mat != nullptr)
 	{
 		mat = UMaterialInstanceDynamic::Create(base_mat, this);
@@ -132,8 +136,7 @@ void AOwnershipActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&OutLi
 	DOREPLIFETIME(AOwnershipActor, matColor);
 }
 
-void AOwnershipActor::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+void AOwnershipActor::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	if(HasAuthority())
 	{

@@ -43,37 +43,32 @@ void ABulletActor::Tick(float DeltaTime)
 
 void ABulletActor::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	auto owningPawn = Cast<APawn>(GetOwner());
-
-	if(owningPawn->GetController() != nullptr && owningPawn->GetController()->IsLocalController())
+	if(GetOwner() == nullptr)
 	{
-		// 플레이어 컨트롤러에 소유되지 않기 때문에 오우너 설정을 해준다
-		SpawnEmitter();
+		return;
 	}
 
-	if(HasAuthority())
-	{
-		auto player = Cast<ANetworkProjectCharacter>(OtherActor);
+	auto player = Cast<ANetworkProjectCharacter>(OtherActor);
 
-		if(player != nullptr)
+	if(OtherActor != GetOwner())
+	{
+		if(HasAuthority())
 		{
-			player->ServerDamageProcess(-10);
+			
+			if(player != nullptr)
+			{
+				player->ServerDamageProcess(attackPower * -1);
+
+				Destroy();
+			}
 		}
 	}
-	
-	// 부딪히면 불꽃 이펙트를 출력한 다음 제거한다
-	//UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), fireEffect, GetActorLocation());
-
-	//Destroy();
 }
 
-void ABulletActor::SpawnEmitter_Implementation()
+void ABulletActor::Destroyed()
 {
-	SpawnMultiEmitter();
-}
+	Super::Destroyed();
 
-void ABulletActor::SpawnMultiEmitter_Implementation()
-{
 	UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), fireEffect, GetActorLocation());
 }
 
