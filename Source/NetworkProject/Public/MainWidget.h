@@ -26,6 +26,14 @@ public:
 	UPROPERTY(VisibleAnywhere, meta = (BindWidget))
 	class UTextBlock* text_Ammo;
 
+	UPROPERTY(VisibleAnywhere, meta = (BindWidget))
+	class UTextBlock* text_PlayerList;
+
+	UPROPERTY(VisibleAnywhere, meta = (BindWidget))
+	class UButton* btn_Quit;
+
 	class ANetworkProjectCharacter* player;
 
+	UFUNCTION()
+	void QuitSession();
 };

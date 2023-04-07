@@ -1,6 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "NetworkProjectCharacter.h"
+#include "BattleGameMode.h"
+#include "BattlePlayerController.h"
+#include "BattlePlayerState.h"
+#include "BattleSpectatorPawn.h"
 #include "BulletActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -11,12 +15,15 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "DrawDebugHelpers.h"
+#include "EngineUtils.h"
 #include "PlayerAnimInstance.h"
 #include "PlayerInfoWidget.h"
 #include "ServerGameInstance.h"
 #include "WeaponActor.h"
 #include "Components/TextBlock.h"
 #include "Components/WidgetComponent.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/HUD.h"
 #include "Net/UnrealNetwork.h"
 
 
@@ -129,18 +136,7 @@ void ANetworkProjectCharacter::Tick(float DeltaSeconds)
 
 	if(curHP <= 0)
 	{
-		bIsDead = true;
-
-		// 조작을 하는 클라이언트에서만 실행한다
-		if(GetController() != nullptr)
-		{
-			GetCharacterMovement()->DisableMovement();
-
-			GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			bUseControllerRotationYaw = false;
-			FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0, 0, 0, 1);
-		}
+		DieProcess();
 	}
 }
 
@@ -160,6 +156,41 @@ FString ANetworkProjectCharacter::PrintInfo()
 #pragma region RepOrNot
 	//FString infoText = FString::Printf(TEXT("Number : %d\nReplicated Number : %d"), number, repNumber);
 #pragma endregion
+
+#pragma region PlayerInfo
+	//APlayerController* pc = Cast<APlayerController>(GetController());
+
+	//FString pcString = pc != nullptr ? FString(GetController()->GetName()) : FString("Has No Controller");
+	//FString gmString = GetWorld()->GetAuthGameMode() != nullptr ? FString("Has GameModeBase") : FString("Has No GameModeBase");
+	//FString gsString = GetWorld()->GetGameState() != nullptr ? FString("Has GameState") : FString("Has No GameState");
+	//FString psString = GetPlayerState() != nullptr ? FString("Has PlayerState") : FString("Has No PlayerState");
+	//FString hudString;
+
+	//if(pc != nullptr)
+	//{
+	//	hudString = pc->GetHUD() != nullptr ? pc->GetHUD()->GetName() : FString("Has No HUD");
+	//}
+
+	//infoText = FString::Printf(TEXT("%s\n%s\n%s\n%s\n%s"), *pcString, *gmString, *gsString, *psString, *hudString);
+#pragma endregion
+
+	FString psName;
+	if(GetPlayerState() != nullptr)
+	{
+		psName = GetPlayerState()->GetPlayerName();
+	}
+
+	FString gsName;
+	if(GetWorld()->GetGameState() != nullptr)
+	{
+		for(TObjectPtr<APlayerState> ps : GetWorld()->GetGameState()->PlayerArray)
+		{
+			gsName.Append(FString::Printf(TEXT("%s\n"), *ps->GetPlayerName()));
+		}
+	}
+
+	infoText = FString::Printf(TEXT("Player State : %s\nGame State : \n%s"), *psName, *gsName);
+
 	return infoText;
 }
 
@@ -184,7 +215,6 @@ void ANetworkProjectCharacter::SetupPlayerInputComponent(class UInputComponent* 
 		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ANetworkProjectCharacter::Fire);
 		EnhancedInputComponent->BindAction(ReleaseAction, ETriggerEvent::Started, this, &ANetworkProjectCharacter::ReleaseWeapon);
 	}
-
 }
 
 void ANetworkProjectCharacter::Move(const FInputActionValue& Value)
@@ -233,9 +263,114 @@ void ANetworkProjectCharacter::AddHealth(int32 value)
 	curHP = FMath::Clamp(curHP + value, 0, maxHP);
 }
 
+void ANetworkProjectCharacter::EndSession()
+{
+	if(HasAuthority())
+	{
+		for(TActorIterator<ANetworkProjectCharacter> pl(GetWorld()); pl; ++pl)
+		{
+			ANetworkProjectCharacter* p = *pl;
+
+			if(p != this)
+			{
+				p->ServerDestroyAllSessions();
+			}
+		}
+		FTimerHandle testHandle;
+		GetWorldTimerManager().SetTimer(testHandle, this, &ANetworkProjectCharacter::DestroySession, 1.0f, false);
+	}
+	else
+	{
+		DestroySession();
+	}
+}
+
+void ANetworkProjectCharacter::DestroySession()
+{
+	gameInstance->sessionInterface->DestroySession(gameInstance->sessionID);
+
+	// 레벨을 다시 처음 위치로 이동
+	ABattlePlayerController* pc = Cast<ABattlePlayerController>(GetController());
+	pc->ClientTravel(FString("/Game/Maps/LoginMap'"), ETravelType::TRAVEL_Relative);
+}
+
+void ANetworkProjectCharacter::ServerDestroyAllSessions_Implementation()
+{
+	MulticastDestroyAllSessions();
+}
+
+void ANetworkProjectCharacter::MulticastDestroyAllSessions_Implementation()
+{
+	if(GetController() != nullptr && GetController()->IsLocalController())
+	{
+		DestroySession();
+	}
+}
+
+// 캐릭터 사망시 처리 함수
+void ANetworkProjectCharacter::DieProcess()
+{
+	bIsDead = true;
+
+	// 조작을 하는 클라이언트에서만 실행한다
+	if (GetController() != nullptr)
+	{
+		GetCharacterMovement()->DisableMovement();
+
+		GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		bUseControllerRotationYaw = false;
+		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0, 0, 0, 1);
+		ReleaseWeapon();
+		GetWorld()->GetFirstPlayerController()->SetShowMouseCursor(true);
+	}
+
+	/*if(HasAuthority())
+	{
+		FTimerHandle respawnHandle;
+		GetWorldTimerManager().SetTimer(respawnHandle, FTimerDelegate::CreateLambda([&]()
+		{
+			ChangeSpectatorMode();
+
+			//Cast<ABattlePlayerController>(GetController())->Respawn(this);
+		}), 3.0f, false);
+	}*/
+}
+
+// 관전자 모드로 변경하는 함수
+void ANetworkProjectCharacter::ChangeSpectatorMode()
+{
+	ABattleGameMode* gm = Cast<ABattleGameMode>(GetWorld()->GetAuthGameMode());
+	
+	if(gm != nullptr)
+	{
+		// 게임 모드에 설정한 관전자 폰 클래스를 불러온다
+		TSubclassOf<ASpectatorPawn> spectatorPawn = gm->SpectatorClass;
+
+		FActorSpawnParameters param;
+		param.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ABattleSpectatorPawn* spectator = GetWorld()->SpawnActor<ABattleSpectatorPawn>(spectatorPawn, GetActorLocation(), GetActorRotation(), param);
+
+		if(spectator != nullptr)
+		{
+			spectator->originalPlayer = this;
+			GetController()->Possess(spectator);
+		}
+	}
+}
+
 void ANetworkProjectCharacter::SetServerName_Implementation(const FString& name)
 {
 	myName = name;
+
+	// 플레이어 스테이트에 세션id 값을 넣어준다
+	ABattlePlayerState* ps = Cast<ABattlePlayerState>(GetPlayerState());
+
+	if (ps != nullptr)
+	{
+		// 해당 플레이어에 대한 이름 변경
+		ps->SetPlayerName(name);
+	}
 }
 
 void ANetworkProjectCharacter::ServerDamageProcess_Implementation(int32 value)

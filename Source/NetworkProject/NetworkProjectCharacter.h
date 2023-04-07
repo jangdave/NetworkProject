@@ -47,6 +47,9 @@ class ANetworkProjectCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputAction* ReleaseAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* Action;
+
 public:
 	ANetworkProjectCharacter();
 	
@@ -130,6 +133,18 @@ public:
 	UFUNCTION(Server, Unreliable)
 	void SetServerName(const FString& name);
 
+	UFUNCTION()
+	void EndSession();
+
+	UFUNCTION()
+	void DestroySession();
+
+	UFUNCTION(Server, Unreliable)
+	void ServerDestroyAllSessions();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastDestroyAllSessions();
+
 	FORCEINLINE int32 GetHealth() { return curHP; };
 
 	FORCEINLINE int32 GetAmmo() { return ammo; };
@@ -160,4 +175,8 @@ private:
 	bool bIsDead;
 
 	class UServerGameInstance* gameInstance;
+
+	void DieProcess();
+
+	void ChangeSpectatorMode();
 };

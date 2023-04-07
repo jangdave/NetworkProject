@@ -4,6 +4,7 @@
 #include "BulletActor.h"
 #include "PlayerInfoWidget.h"
 #include "Components/SphereComponent.h"
+#include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "NetworkProject/NetworkProjectCharacter.h"
 
@@ -57,6 +58,16 @@ void ABulletActor::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* O
 			
 			if(player != nullptr)
 			{
+				if(player->GetHealth() <= attackPower)
+				{
+					ANetworkProjectCharacter* myOwner = Cast<ANetworkProjectCharacter>(GetOwner());
+
+					if(myOwner != nullptr)
+					{
+						myOwner->GetPlayerState()->SetScore(myOwner->GetPlayerState()->GetScore() + 10.0f);
+					}
+				}
+
 				player->ServerDamageProcess(attackPower * -1);
 
 				Destroy();

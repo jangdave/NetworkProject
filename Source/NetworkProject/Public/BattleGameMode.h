@@ -13,5 +13,10 @@ UCLASS()
 class NETWORKPROJECT_API ABattleGameMode : public AGameMode
 {
 	GENERATED_BODY()
-	
+
+protected:
+
+public:
+	//AActor* ChoosePlayerStart(AController* player);
+	AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 };

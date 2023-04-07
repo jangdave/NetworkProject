@@ -34,6 +34,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim Setting")
 	bool bIsDead = false;
 
+	UFUNCTION(BlueprintCallable)
+	void AnimNotify_WalkSound(class USoundBase* source, USoundAttenuation* attenuation);
+
 private:
 	class ANetworkProjectCharacter* player;
 };
